@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Amer_Khanfar — Roblox Developer</title>
+  <meta name="description" content="Roblox scripter building custom gameplay, tools and interactive experiences. 100M+ visits across published games. Available for hire." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- Fixed 3D scene: background particles + the character that follows you -->
+  <canvas id="scene"></canvas>
+  <div id="scene-fallback" aria-hidden="true"></div>
+
+  <!-- Navbar -->
+  <header class="nav" id="nav">
+    <a class="nav__brand" href="#hero">
+      <span class="nav__logo">AK</span>
+      <span class="nav__name">Amer<span class="accent">.dev</span></span>
+    </a>
+    <nav class="nav__links">
+      <a href="#work">Work</a>
+      <a href="#twitter">Updates</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <a class="btn btn--sm" href="https://discord.com/users/452532140341592085" target="_blank" rel="noopener">Hire me</a>
+  </header>
+
+  <main>
+    <!-- HERO -->
+    <section id="hero" class="hero section">
+      <div class="hero__content reveal">
+        <span class="eyebrow"><span class="dot"></span> Roblox Developer</span>
+        <h1 class="hero__title">
+          I build <span class="grad">Roblox games</span><br />people can't stop playing.
+        </h1>
+        <p class="hero__sub">
+          Roblox scripter with one year of experience creating custom gameplay,
+          tools, and interactive features. Explore my work and see how I bring
+          ideas to life in Roblox.
+        </p>
+        <div class="hero__cta">
+          <a class="btn btn--primary" href="https://discord.com/users/452532140341592085" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.5 3l-.2.5a14 14 0 0 1 4.2 1.4 13.6 13.6 0 0 0-15 0A14 14 0 0 1 8.7 3.5L8.5 3a19.8 19.8 0 0 0-4.8 1.4C1 9 0 13.5.3 18a20 20 0 0 0 6 3l.8-1.3c-.7-.3-1.4-.6-2-1l.5-.3a13.5 13.5 0 0 0 12 0l.5.3c-.7.4-1.4.7-2 1l.8 1.3a20 20 0 0 0 6-3c.4-5.3-.7-9.7-3.6-13.6ZM8.3 15.3c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Zm7.4 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Z"/></svg>
+            Let's talk on Discord
+          </a>
+          <a class="btn btn--ghost" href="#work">View my games →</a>
+        </div>
+        <div class="hero__stats" id="hero-stats">
+          <div class="stat">
+            <span class="stat__num" data-counter="0" id="stat-visits">0</span>
+            <span class="stat__label">Total Visits</span>
+          </div>
+          <div class="stat">
+            <span class="stat__num" data-counter="0" id="stat-live">0</span>
+            <span class="stat__label">Playing Now</span>
+          </div>
+          <div class="stat">
+            <span class="stat__num" data-counter="0" id="stat-games">0</span>
+            <span class="stat__label">Live Games</span>
+          </div>
+        </div>
+      </div>
+      <div class="hero__char" aria-hidden="true">
+        <!-- the 3D character renders here (canvas is fixed, this just reserves space) -->
+      </div>
+      <a class="scroll-hint" href="#work" aria-label="Scroll down"><span></span></a>
+    </section>
+
+    <!-- WORK / PORTFOLIO -->
+    <section id="work" class="section work">
+      <div class="section__head reveal">
+        <span class="eyebrow"><span class="dot"></span> Portfolio</span>
+        <h2 class="section__title">Games I've <span class="grad">shipped</span></h2>
+        <p class="section__sub">Live stats, pulled straight from Roblox and ranked by visits. Updates in real time.</p>
+      </div>
+      <div class="games" id="games-grid">
+        <!-- skeleton cards while loading -->
+        <div class="card card--skel"></div>
+        <div class="card card--skel"></div>
+        <div class="card card--skel"></div>
+        <div class="card card--skel"></div>
+        <div class="card card--skel"></div>
+        <div class="card card--skel"></div>
+      </div>
+    </section>
+
+    <!-- TWITTER / UPDATES -->
+    <section id="twitter" class="section tw">
+      <div class="section__head reveal">
+        <span class="eyebrow"><span class="dot"></span> Latest on X</span>
+        <h2 class="section__title">What I'm <span class="grad">building now</span></h2>
+        <p class="section__sub">Follow the journey, devlogs and drops <a class="link" href="https://x.com/ItzAmerBlox" target="_blank" rel="noopener">@ItzAmerBlox</a>.</p>
+      </div>
+      <div class="tw__wrap reveal">
+        <div class="tw__embed" id="tw-embed">
+          <a class="twitter-timeline"
+             data-theme="dark"
+             data-tweet-limit="3"
+             data-chrome="noheader nofooter noborders transparent"
+             data-width="100%"
+             href="https://twitter.com/ItzAmerBlox?ref_src=twsrc%5Etfw">Posts by @ItzAmerBlox</a>
+        </div>
+        <div class="tw__fallback" id="tw-fallback" hidden>
+          <div class="tw__icon">𝕏</div>
+          <h3>Catch my latest posts on X</h3>
+          <p>Devlogs, game updates and behind-the-scenes — all on my profile.</p>
+          <a class="btn btn--primary" href="https://x.com/ItzAmerBlox" target="_blank" rel="noopener">Open @ItzAmerBlox →</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTACT CTA -->
+    <section id="contact" class="section contact">
+      <div class="contact__card reveal">
+        <span class="eyebrow eyebrow--center"><span class="dot"></span> Available for work</span>
+        <h2 class="contact__title">Got a game idea?<br /><span class="grad">Let's make it real.</span></h2>
+        <p class="contact__sub">Open for commissions and collabs — scripting, gameplay systems, tools and full builds. Reach out and let's talk about your project.</p>
+        <div class="contact__cta">
+          <a class="btn btn--primary btn--lg" href="https://discord.com/users/452532140341592085" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.5 3l-.2.5a14 14 0 0 1 4.2 1.4 13.6 13.6 0 0 0-15 0A14 14 0 0 1 8.7 3.5L8.5 3a19.8 19.8 0 0 0-4.8 1.4C1 9 0 13.5.3 18a20 20 0 0 0 6 3l.8-1.3c-.7-.3-1.4-.6-2-1l.5-.3a13.5 13.5 0 0 0 12 0l.5.3c-.7.4-1.4.7-2 1l.8 1.3a20 20 0 0 0 6-3c.4-5.3-.7-9.7-3.6-13.6ZM8.3 15.3c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Zm7.4 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Z"/></svg>
+            Message me on Discord
+          </a>
+          <a class="btn btn--ghost btn--lg" href="https://x.com/ItzAmerBlox" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M18.9 2H22l-7.5 8.6L23 22h-6.8l-5.3-7-6.1 7H1.7l8-9.2L1 2h7l4.8 6.4L18.9 2Zm-2.4 18h1.9L7.6 4H5.6l10.9 16Z"/></svg>
+            Follow on X
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>© <span id="year"></span> Amer_Khanfar — Roblox Developer</span>
+    <span class="footer__live"><span class="pulse"></span> Live data via Roblox API</span>
+  </footer>
+
+  <script src="main.js" type="module"></script>
+</body>
+</html>
