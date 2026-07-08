@@ -39,13 +39,13 @@ const GAMES = [
   { placeId: "106159203290418", universeId: 7538895650,  like: 84.6 }, // Kraken Game
   { placeId: "132473176738458", universeId: 10110629028, like: 89.7 }, // My Soccer Park
   { placeId: "122964125911374", universeId: 10046412802, like: 91.4 }, // My Trampoline Park
-  { placeId: "108969277786615", universeId: 9862487808,  like: 80.9 }, // Hug Troll Tower
   { placeId: "76469560314137",  universeId: 9759341824,  like: 80.6 }, // Dodgeball
   { placeId: "105286263263507", universeId: 10080131877, like: 96.6 }, // Shoot a Lucky Block
   { placeId: "80885214023481",  universeId: 9898638684,  like: 60.9 }, // Cortisol Level Tower
   { placeId: "79436299646095",  universeId: 8209640691,  like: 96.1 }, // One of Us
   { placeId: "70871855898838",  universeId: 8986150911,  like: 52.6 }, // Stop The Timer
   { placeId: "15277199491",     universeId: 5268677200,  like: 91.0 }, // Stunt Simulator
+  { placeId: "107750563478039", universeId: 10205485380, like: 83.1 }, // Penalty Kicks
 ];
 
 // Roblox's API blocks direct browser calls (CORS). Route through a CORS
@@ -183,7 +183,7 @@ const CharacterScene = (() => {
 
   // Your real Roblox avatar render — image straight from Roblox's CDN
   // (CORS-OK for WebGL), floated in the holographic stage with a soft aura,
-  // a glowing floor pad, and a cursor-reactive tilt for a 2.5D feel.
+  // a glowing floor pad, and a cursor-reactive tilt (2.5D life).
   function addBillboard(url) {
     // soft blue aura behind the avatar so it pops off the dark background
     const aura = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -317,7 +317,7 @@ const CharacterScene = (() => {
     camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
     camera.position.set(0, 0, 7);
 
-    // soft environment for realistic reflections (glossy shades, suit sheen)
+    // soft environment for realistic reflections
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
