@@ -27,13 +27,17 @@ const ROBLOX_USER_ID = 5521424624;
 const AVATAR_FALLBACK =
   "https://tr.rbxcdn.com/30DAY-Avatar-30D42F2F5988DBEDBDD8FA87F0430A82-Png/720/720/Avatar/Png/noFilter";
 
-// `like` (approval %) is baked in — it changes very slowly and its votes
-// endpoint isn't reliably proxyable. Visits / players / favorites stay live.
-const GAMES = [
+// The games shown are pulled LIVE from the Roblox account's favorited games —
+// to feature a new game, just favorite it on Roblox (unfavorite to remove).
+// This list is the safety net if the favorites endpoint is unreachable, and
+// the source of baked `like` ratios (the votes endpoint isn't proxyable from
+// the browser; ratios change slowly). New favorites without an entry here
+// simply show "—" for likes until a ratio is added.
+const FALLBACK_GAMES = [
   { placeId: "139862517286509", universeId: 8473646150,  like: 97.8 }, // Power Simulator X
   { placeId: "119382507680341", universeId: 10001527292, like: 91.4 }, // My SkatePark
   { placeId: "107430757519116", universeId: 10130680213, like: 73.9 }, // WYR Anime Tower
-  { placeId: "140305746641797", universeId: 10065612488, like: 87.8 }, // Fish Empire
+  { placeId: "140305746641797", universeId: 10065612488, like: 87.8 }, // Fish Empire / Sell Fish
   { placeId: "127364241509157", universeId: 9908137395,  like: 88.7 }, // Build a Bridge / Sniper
   { placeId: "137533474840546", universeId: 10061909806, like: 85.6 }, // Sneak Out
   { placeId: "106159203290418", universeId: 7538895650,  like: 84.6 }, // Kraken Game
@@ -46,7 +50,25 @@ const GAMES = [
   { placeId: "70871855898838",  universeId: 8986150911,  like: 52.6 }, // Stop The Timer
   { placeId: "15277199491",     universeId: 5268677200,  like: 91.0 }, // Stunt Simulator
   { placeId: "107750563478039", universeId: 10205485380, like: 83.1 }, // Penalty Kicks
+  { placeId: "121722722167924", universeId: 10473274543, like: 86.4 }, // Scary Hide And Paint
+  { placeId: "98784878077721",  universeId: 10279039154, like: 91.7 }, // Brainrot Slayer
+  { placeId: "133068041935000", universeId: 10438058659, like: 95.8 }, // +1 Click Evolution
+  { placeId: "92469538556529",  universeId: 10400350036, like: 75.0 }, // My Soccer Park (revamp)
+  { placeId: "124011273972294", universeId: 10256486704, like: 91.3 }, // FAT Bridge Battles
 ];
+const KNOWN_LIKES = new Map(FALLBACK_GAMES.map((g) => [g.universeId, g.like]));
+
+// Pinned snapshots — rendered with these baked stats whenever Roblox's live
+// details API won't return the game (e.g. temporarily unavailable, like
+// Dodgeball). Live data automatically wins again the moment it's back.
+const PINNED_GAMES = [
+  {
+    universeId: 9759341824, placeId: "76469560314137", name: "Dodgeball!",
+    visits: 7933656, playing: 0, favorites: 22300, like: 80.6,
+    thumbnail: "https://tr.rbxcdn.com/180DAY-5e0fbaf8d33767f63e065bf870e4562c/768/432/Image/Png/noFilter",
+  },
+];
+const PINNED = new Map(PINNED_GAMES.map((g) => [g.universeId, g]));
 
 // Roblox's API blocks direct browser calls (CORS). Route through a CORS
 // mirror (RoProxy = swap the domain), with allorigins as a backup.
@@ -70,6 +92,26 @@ async function getAvatarUrl() {
     const d = await rbxFetch(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${ROBLOX_USER_ID}&size=720x720&format=Png&isCircular=false`);
     return (d.data && d.data[0] && d.data[0].imageUrl) || AVATAR_FALLBACK;
   } catch { return AVATAR_FALLBACK; }
+}
+
+// the account's favorited games — the live source of what the site shows
+async function getFavoriteGames() {
+  const out = [];
+  let cursor = "";
+  for (let page = 0; page < 4; page++) {
+    const j = await rbxFetch(
+      `https://games.roblox.com/v2/users/${ROBLOX_USER_ID}/favorite/games?limit=50` +
+        (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "")
+    );
+    for (const g of j.data || []) {
+      if (g.id && g.rootPlace && g.rootPlace.id) {
+        out.push({ universeId: g.id, placeId: String(g.rootPlace.id) });
+      }
+    }
+    cursor = j.nextPageCursor;
+    if (!cursor) break;
+  }
+  return out;
 }
 
 /* =====================================================================
@@ -347,13 +389,18 @@ const CharacterScene = (() => {
 ===================================================================== */
 async function loadGames() {
   const grid = $("#games-grid");
-  const ids = GAMES.map((g) => g.universeId).join(",");
+  // favorites first — falls back to the baked lineup if the endpoint is down
+  let list = null;
+  try { list = await getFavoriteGames(); } catch (e) { /* fall through */ }
+  if (!list || !list.length) list = FALLBACK_GAMES;
+
+  const ids = list.map((g) => g.universeId).join(",");
   try {
     const [details, thumbs] = await Promise.all([
       rbxFetch(`https://games.roblox.com/v1/games?universeIds=${ids}`),
       rbxFetch(`https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=${ids}&countPerUniverse=1&defaults=true&size=768x432&format=Png&isCircular=false`).catch(() => ({ data: [] })),
     ]);
-    const { games, totals } = buildGames(details, thumbs);
+    const { games, totals } = buildGames(list, details, thumbs);
     if (!games.length) throw new Error("empty");
     renderHeroStats(totals);
     renderCards(games, grid);
@@ -363,15 +410,25 @@ async function loadGames() {
 }
 
 // merge live details + thumbnails with the baked like ratio, rank by visits
-function buildGames(details, thumbs) {
+function buildGames(list, details, thumbs) {
   const dMap = new Map((details.data || []).map((d) => [d.id, d]));
   const tMap = new Map((thumbs.data || []).map((t) => [t.universeId, (t.thumbnails && t.thumbnails[0] && t.thumbnails[0].imageUrl) || null]));
-  const games = GAMES.map(({ placeId, universeId, like }) => {
+  const games = list.map(({ placeId, universeId }) => {
     const d = dMap.get(universeId);
-    if (!d) return null;
+    const pin = PINNED.get(universeId);
+    if (!d && !pin) return null;
+    if (!d) {
+      // live details unavailable — render the pinned snapshot instead
+      return {
+        universeId, placeId, name: pin.name, playing: pin.playing || 0, visits: pin.visits || 0,
+        favorites: pin.favorites || 0, likeRatio: pin.like || KNOWN_LIKES.get(universeId) || 0,
+        thumbnail: tMap.get(universeId) || pin.thumbnail || null,
+        url: `https://www.roblox.com/games/${placeId}/`,
+      };
+    }
     return {
       universeId, placeId, name: d.name, playing: d.playing || 0, visits: d.visits || 0,
-      favorites: d.favoritedCount || 0, likeRatio: like || 0,
+      favorites: d.favoritedCount || 0, likeRatio: KNOWN_LIKES.get(universeId) || 0,
       thumbnail: tMap.get(universeId) || null,
       url: `https://www.roblox.com/games/${placeId}/`,
     };
@@ -392,7 +449,7 @@ function renderCards(games, grid) {
   grid.innerHTML = "";
   games.forEach((g, i) => {
     const rank = i + 1;
-    const like = g.likeRatio ? g.likeRatio.toFixed(1) : "—";
+    const like = g.likeRatio ? g.likeRatio.toFixed(1) + "%" : "—";
     const thumb = g.thumbnail
       ? `<img src="${g.thumbnail}" alt="${escapeHtml(g.name)}" loading="lazy" />`
       : "";
@@ -408,10 +465,10 @@ function renderCards(games, grid) {
       <div class="card__thumb">${thumb}</div>
       <div class="card__body">
         <h3 class="card__name">${escapeHtml(g.name)}</h3>
-        <div class="likebar"><i style="width:${g.likeRatio || 0}%"></i></div>
+        ${g.likeRatio ? `<div class="likebar"><i style="width:${g.likeRatio}%"></i></div>` : ""}
         <div class="card__stats">
           <div class="cstat"><span class="cstat__v">${fmt(g.visits)}</span><span class="cstat__l">Visits</span></div>
-          <div class="cstat cstat--like"><span class="cstat__v">${like}%</span><span class="cstat__l">Likes</span></div>
+          <div class="cstat cstat--like"><span class="cstat__v">${like}</span><span class="cstat__l">Likes</span></div>
           <div class="cstat"><span class="cstat__v">${fmt(g.favorites)}</span><span class="cstat__l">Favs</span></div>
         </div>
         <span class="card__play">Play on Roblox
