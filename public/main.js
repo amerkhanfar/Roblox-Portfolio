@@ -55,6 +55,12 @@ const FALLBACK_GAMES = [
   { placeId: "133068041935000", universeId: 10438058659, like: 95.8 }, // +1 Click Evolution
   { placeId: "92469538556529",  universeId: 10400350036, like: 75.0 }, // My Soccer Park (revamp)
   { placeId: "124011273972294", universeId: 10256486704, like: 91.3 }, // FAT Bridge Battles
+  { placeId: "101875766055093", universeId: 10769211566, like: 66.7 }, // Get Out!
+  { placeId: "110423890901134", universeId: 10770519296, like: 92.3 }, // Piggyback Ride!
+  { placeId: "120696216232795", universeId: 10769421746, like: 39.6 }, // Guess The Country Size!
+  { placeId: "72540294758218",  universeId: 10762986581, like: 84.5 }, // Mini Emergency
+  { placeId: "103719179160331", universeId: 10765733246, like: 97.7 }, // Steal A Soccer Player
+  { placeId: "126569244149878", universeId: 10595513010, like: 81.3 }, // My Bunker
 ];
 const KNOWN_LIKES = new Map(FALLBACK_GAMES.map((g) => [g.universeId, g.like]));
 
@@ -70,27 +76,62 @@ const PINNED_GAMES = [
 ];
 const PINNED = new Map(PINNED_GAMES.map((g) => [g.universeId, g]));
 
-// Roblox's API blocks direct browser calls (CORS). Route through a CORS
-// mirror (RoProxy = swap the domain), with allorigins as a backup.
+// PRIMARY data source: data.json, regenerated every 10 min by the GitHub
+// Action (scripts/update-data.mjs) with first-party Roblox data — same
+// origin, no CORS, can't be rate-limited. Fetched once and shared.
+let siteDataPromise;
+function getSiteData() {
+  siteDataPromise ||= fetch("data.json", { cache: "no-cache" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => (d && Array.isArray(d.games) && d.games.length ? d : null))
+    .catch(() => null);
+  return siteDataPromise;
+}
+
+// FALLBACK: Roblox's API blocks direct browser calls (CORS), so if data.json
+// is missing we go through public CORS mirrors. They 429/404 under load —
+// RoProxy rate-limits bursts hard — so every call runs through one spaced
+// queue with a per-request timeout and a second pass after the burst window.
 const PROXIES = [
   (u) => u.replace(/\.roblox\.com/, ".roproxy.com"),
   (u) => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+  (u) => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u),
 ];
-async function rbxFetch(url) {
+let rbxQueue = Promise.resolve();
+function rbxFetch(url) {
+  const run = rbxQueue.then(() => rbxFetchNow(url));
+  rbxQueue = run.catch(() => {}).then(() => new Promise((r) => setTimeout(r, 400)));
+  return run;
+}
+async function rbxFetchNow(url) {
   let err;
-  for (const wrap of PROXIES) {
-    try {
-      const r = await fetch(wrap(url));
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return await r.json();
-    } catch (e) { err = e; }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 1500));
+    for (const wrap of PROXIES) {
+      try {
+        const r = await fetch(wrap(url), { signal: AbortSignal.timeout(6000) });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return await r.json();
+      } catch (e) { err = e; }
+    }
   }
   throw err;
 }
 async function getAvatarUrl() {
+  const KEY = "rbx-avatar-v1";
+  try {
+    const c = JSON.parse(localStorage.getItem(KEY));
+    if (c && c.url && Date.now() - c.t < 24 * 60 * 60 * 1000) return c.url;
+  } catch { /* ignore bad cache */ }
+  const save = (url) => {
+    try { localStorage.setItem(KEY, JSON.stringify({ t: Date.now(), url })); } catch { /* storage full/blocked */ }
+    return url;
+  };
+  const site = await getSiteData();
+  if (site && site.avatarUrl) return save(site.avatarUrl);
   try {
     const d = await rbxFetch(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${ROBLOX_USER_ID}&size=720x720&format=Png&isCircular=false`);
-    return (d.data && d.data[0] && d.data[0].imageUrl) || AVATAR_FALLBACK;
+    return save((d.data && d.data[0] && d.data[0].imageUrl) || AVATAR_FALLBACK);
   } catch { return AVATAR_FALLBACK; }
 }
 
@@ -387,25 +428,64 @@ const CharacterScene = (() => {
 /* =====================================================================
    Live game data + cards
 ===================================================================== */
+// The public CORS proxies rate-limit (429) and hiccup (404) under load, so
+// the last good payload is cached: it renders instantly on every visit, a
+// fresh cache skips the proxies entirely, and a stale one still renders
+// while a background refresh replaces it only if something changed.
+const GAMES_CACHE_KEY = "rbx-games-v1";
+const GAMES_CACHE_TTL = 10 * 60 * 1000;
+
+function readGamesCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(GAMES_CACHE_KEY));
+    return c && Array.isArray(c.games) && c.games.length && c.totals ? c : null;
+  } catch { return null; }
+}
+function writeGamesCache(games, totals) {
+  try { localStorage.setItem(GAMES_CACHE_KEY, JSON.stringify({ t: Date.now(), games, totals })); } catch { /* storage full/blocked */ }
+}
+
 async function loadGames() {
   const grid = $("#games-grid");
-  // favorites first — falls back to the baked lineup if the endpoint is down
-  let list = null;
-  try { list = await getFavoriteGames(); } catch (e) { /* fall through */ }
-  if (!list || !list.length) list = FALLBACK_GAMES;
 
-  const ids = list.map((g) => g.universeId).join(",");
+  // instant paint from the last good payload
+  const cached = readGamesCache();
+  if (cached) {
+    renderHeroStats(cached.totals);
+    renderCards(cached.games, grid);
+  }
+
+  // primary: the Action-generated data.json (same-origin, proxy-free)
+  const site = await getSiteData();
+  if (site) {
+    writeGamesCache(site.games, site.totals);
+    if (!cached || JSON.stringify(site.games) !== JSON.stringify(cached.games)) {
+      renderHeroStats(site.totals);
+      renderCards(site.games, grid);
+    }
+    return;
+  }
+
+  // fallback: live fetch through the public CORS proxies
+  if (cached && Date.now() - cached.t < GAMES_CACHE_TTL) return; // fresh enough
   try {
-    const [details, thumbs] = await Promise.all([
-      rbxFetch(`https://games.roblox.com/v1/games?universeIds=${ids}`),
-      rbxFetch(`https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=${ids}&countPerUniverse=1&defaults=true&size=768x432&format=Png&isCircular=false`).catch(() => ({ data: [] })),
-    ]);
+    // favorites first — falls back to the baked lineup if the endpoint is down
+    let list = null;
+    try { list = await getFavoriteGames(); } catch (e) { /* fall through */ }
+    if (!list || !list.length) list = FALLBACK_GAMES;
+
+    const ids = list.map((g) => g.universeId).join(",");
+    const details = await rbxFetch(`https://games.roblox.com/v1/games?universeIds=${ids}`);
+    const thumbs = await rbxFetch(`https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=${ids}&countPerUniverse=1&defaults=true&size=768x432&format=Png&isCircular=false`).catch(() => ({ data: [] }));
     const { games, totals } = buildGames(list, details, thumbs);
     if (!games.length) throw new Error("empty");
+    writeGamesCache(games, totals);
+    if (cached && JSON.stringify(games) === JSON.stringify(cached.games)) return; // unchanged
     renderHeroStats(totals);
     renderCards(games, grid);
   } catch (e) {
-    grid.innerHTML = `<div class="empty-note">Live Roblox stats are momentarily unavailable — please refresh in a moment.</div>`;
+    // cached render (if any) stays up — only show the note on a cold miss
+    if (!cached) grid.innerHTML = `<div class="empty-note">Live Roblox stats are momentarily unavailable — please refresh in a moment.</div>`;
   }
 }
 
@@ -547,7 +627,22 @@ const FEATURED_TWEETS = [
   "https://x.com/ItzAmerBlox/status/1953838754872881303",
 ];
 
+// Loading X's widgets.js during the initial burst races the data fetches and
+// its embed script throws noisy appendChild errors when a tweet fails to
+// render — so the embeds only start once the section approaches the viewport.
 function initTwitter() {
+  const section = document.getElementById("twitter");
+  if (!section || !("IntersectionObserver" in window)) return startTwitter();
+  const io = new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting)) {
+      io.disconnect();
+      startTwitter();
+    }
+  }, { rootMargin: "600px" });
+  io.observe(section);
+}
+
+function startTwitter() {
   const embed = $("#tw-embed");
   const fallback = $("#tw-fallback");
   const showFallback = () => { embed.hidden = true; fallback.hidden = false; };
@@ -568,7 +663,8 @@ function initTwitter() {
           embed.appendChild(cell);
           return twttr.widgets
             .createTweet(id, cell, { theme: "dark", conversation: "none", align: "center" })
-            .then((el) => { if (el) ok++; });
+            .then((el) => { if (el) ok++; })
+            .catch(() => { cell.remove(); }); // one bad embed shouldn't sink the rest
         })
       ).then(() => { if (!ok) showFallback(); });
     } else if (window.twttr && twttr.widgets) {
